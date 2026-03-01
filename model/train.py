@@ -162,7 +162,8 @@ def train(cfg: RunConfig) -> None:
     loader = DataLoader(
         dataset,
         batch_size=cfg.training.micro_batch_size,
-        num_workers=0,
+        num_workers=4,
+        prefetch_factor=2,
         collate_fn=collate_fn,
     )
     eval_loaders = []
@@ -172,7 +173,8 @@ def train(cfg: RunConfig) -> None:
             eval_loader = DataLoader(
                 eval_dataset,
                 batch_size=cfg.training.micro_batch_size,
-                num_workers=0,
+                num_workers=4,
+                prefetch_factor=2,
                 collate_fn=collate_fn,
             )
             eval_loaders.append((f"eval_{idx}", eval_loader))
@@ -195,9 +197,24 @@ def train(cfg: RunConfig) -> None:
 
     wandb_run = init_wandb(cfg)
 
+    global_step = 0
     step = 0
     last_grad_norm = 0.0
     optimizer.zero_grad(set_to_none=True)
+    
+    # Check for FLA / Flash Attention
+    try:
+        import fla
+        print("FLA (Flash Linear Attention) is installed.")
+    except ImportError:
+        print("WARNING: FLA (Flash Linear Attention) is NOT installed. Linear attention layers will be slow and memory intensive!")
+        
+    try:
+        import flash_attn
+        print("Flash Attention is installed.")
+    except ImportError:
+        print("WARNING: Flash Attention is NOT installed. Full attention layers might be slower.")
+
     for batch in loader:
         step += 1
         batch = {k: v.to(device) for k, v in batch.items()}
@@ -207,13 +224,14 @@ def train(cfg: RunConfig) -> None:
         loss.backward()
 
         if step % grad_accum_steps == 0:
+            global_step += 1
             last_grad_norm = compute_grad_norm(model)
             optimizer.step()
             scheduler.step()
             optimizer.zero_grad(set_to_none=True)
 
         if step % cfg.training.log_interval == 0:
-            print(f"step={step} loss={loss.item() * grad_accum_steps:.6f}")
+            print(f"step={step} global_step={global_step} loss={loss.item() * grad_accum_steps:.6f}")
 
         if wandb_run is not None and step % cfg.wandb.log_interval == 0:
             total_loss = loss.item() * grad_accum_steps
@@ -223,9 +241,10 @@ def train(cfg: RunConfig) -> None:
                     "train/total_loss": total_loss,
                     "train/grad_norm": last_grad_norm,
                     "train/lr": scheduler.get_last_lr()[0],
-                    "step": step,
+                    "step": global_step,
+                    "micro_step": step,
                 },
-                step=step,
+                step=global_step,
             )
 
         if eval_loaders and step % cfg.training.eval_interval == 0:
@@ -239,13 +258,14 @@ def train(cfg: RunConfig) -> None:
             if eval_results:
                 mean_eval_loss = sum(eval_results.values()) / len(eval_results)
                 if wandb_run is not None:
-                    payload = {"eval/loss": mean_eval_loss, "step": step}
+                    payload = {"eval/loss": mean_eval_loss, "step": global_step}
                     for name, value in eval_results.items():
                         payload[f"eval/{name}_loss"] = value
-                    wandb_lib.log(payload, step=step)
-                print(f"step={step} eval_loss={mean_eval_loss:.6f}")
+                    wandb_lib.log(payload, step=global_step)
+                print(f"step={step} global_step={global_step} eval_loss={mean_eval_loss:.6f}")
 
-        if step >= cfg.training.max_steps:
+        if global_step >= cfg.training.max_steps:
+            print(f"Reached max_steps ({cfg.training.max_steps}). Stopping training.")
             break
 
 
@@ -261,8 +281,11 @@ def main():
     parser.add_argument("--wandb_log_interval", type=int)
     parser.add_argument("--eval_interval", type=int)
     parser.add_argument("--eval_num_batches", type=int)
+    parser.add_argument("--fan", action="store_true")
     args = parser.parse_args()
     cfg = load_config(args.config)
+    if args.fan:
+        cfg.model.use_fan = True
     if args.run_name:
         cfg.run_name = args.run_name
     if args.device:

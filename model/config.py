@@ -25,6 +25,7 @@ class ModelConfig:
     pad_token_id: Optional[int] = None
     bos_token_id: Optional[int] = None
     eos_token_id: Optional[int] = None
+    use_fan: bool = False
 
 
 @dataclass

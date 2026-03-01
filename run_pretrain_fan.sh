@@ -92,4 +92,5 @@ python -m model.train --config "$CONFIG_PATH" \
   ${EVAL_INTERVAL:+--eval_interval "$EVAL_INTERVAL"} \
   ${EVAL_NUM_BATCHES:+--eval_num_batches "$EVAL_NUM_BATCHES"} \
   ${WANDB_LOG_INTERVAL:+--wandb_log_interval "$WANDB_LOG_INTERVAL"} \
+  --fan \
   "${EXTRA_ARGS[@]}"

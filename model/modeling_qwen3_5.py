@@ -65,6 +65,57 @@ else:
 
 logger = logging.get_logger(__name__)
 
+class FANLayer(nn.Module):
+    """
+    FANLayer: The layer used in FAN (https://arxiv.org/abs/2410.02675).
+    
+    Args:
+        input_dim (int): The number of input features.
+        output_dim (int): The number of output features.
+        p_ratio (float): The ratio of output dimensions used for cosine and sine parts (default: 0.25).
+        activation (str or callable): The activation function to apply to the g component. If a string is passed,
+            the corresponding activation from torch.nn.functional is used (default: 'gelu', we set to None in FANformer).
+        use_p_bias (bool): If True, include bias in the linear transformations of p component (default: True). 
+            There is almost no difference between bias and non-bias in our experiments.
+    """
+    
+    def __init__(self, input_dim, output_dim, p_ratio=0.25, activation=None, use_p_bias=True):
+        super(FANLayer, self).__init__()
+        
+        # Ensure the p_ratio is within a valid range
+        assert 0 <= p_ratio <= 0.5, "p_ratio must be between 0 and 0.5"
+        
+        self.p_ratio = p_ratio
+        p_output_dim = int(output_dim * self.p_ratio)
+        g_output_dim = output_dim - p_output_dim * 2  # Account for cosine and sine terms
+        
+
+        self.input_linear = nn.Linear(input_dim, p_output_dim+g_output_dim, bias=use_p_bias)
+        
+        self.fused_dims = (p_output_dim, g_output_dim)
+        
+        # Set the activation function
+        if isinstance(activation, str):
+            self.activation = getattr(F, activation)
+        else:
+            self.activation = activation if activation else lambda x: x
+
+    def forward(self, src, norm_g=None):
+        """
+        Args:
+            src (Tensor): Input tensor of shape (batch_size, input_dim).
+        
+        Returns:
+            Tensor: Output tensor of shape (batch_size, output_dim), after applying the FAN layer.
+        """
+        pg = self.input_linear(src)
+        
+        p, g = pg.split(self.fused_dims, dim=-1)
+        
+        # Concatenate cos(p), sin(p), and activated g along the last dimension
+        output = torch.cat((torch.cos(p), torch.sin(p), self.activation(g)), dim=-1)
+        
+        return output
 
 class Qwen3_5DynamicCache:
     """
@@ -509,6 +560,9 @@ class Qwen3_5GatedDeltaNet(nn.Module):
         self.in_proj_b = nn.Linear(self.hidden_size, self.num_v_heads, bias=False)
         self.in_proj_a = nn.Linear(self.hidden_size, self.num_v_heads, bias=False)
 
+        if getattr(config, "use_fan", False):
+            self.fan_layer = FANLayer(self.hidden_size, self.hidden_size)
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -533,7 +587,11 @@ class Qwen3_5GatedDeltaNet(nn.Module):
             conv_state = cache_params.conv_states[self.layer_idx]
             recurrent_state = cache_params.recurrent_states[self.layer_idx]
 
-        mixed_qkv = self.in_proj_qkv(hidden_states)
+        qkv_input = hidden_states
+        if hasattr(self, "fan_layer"):
+            qkv_input = self.fan_layer(hidden_states)
+
+        mixed_qkv = self.in_proj_qkv(qkv_input)
         mixed_qkv = mixed_qkv.transpose(1, 2)
 
         z = self.in_proj_z(hidden_states)

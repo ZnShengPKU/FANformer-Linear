@@ -153,12 +153,14 @@ class Qwen3_5TextConfig(PreTrainedConfig):
         pad_token_id: int | None = None,
         bos_token_id: int | None = None,
         eos_token_id: int | None = None,
+        use_fan: bool = False,
         **kwargs,
     ):
         kwargs["ignore_keys_at_rope_validation"] = {"mrope_section", "mrope_interleaved"}
         self.pad_token_id = pad_token_id
         self.bos_token_id = bos_token_id
         self.eos_token_id = eos_token_id
+        self.use_fan = use_fan
         self.tie_word_embeddings = tie_word_embeddings
         self.vocab_size = vocab_size
         self.max_position_embeddings = max_position_embeddings

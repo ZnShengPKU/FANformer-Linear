@@ -45,5 +45,6 @@ def build_model(config: ModelConfig) -> Qwen3_5ForCausalLM:
         pad_token_id=config.pad_token_id,
         bos_token_id=config.bos_token_id,
         eos_token_id=config.eos_token_id,
+        use_fan=config.use_fan,
     )
     return Qwen3_5ForCausalLM(text_config)
