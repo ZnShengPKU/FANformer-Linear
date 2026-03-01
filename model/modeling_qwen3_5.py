@@ -561,7 +561,8 @@ class Qwen3_5GatedDeltaNet(nn.Module):
         self.in_proj_a = nn.Linear(self.hidden_size, self.num_v_heads, bias=False)
 
         if getattr(config, "use_fan", False):
-            self.fan_layer = FANLayer(self.hidden_size, self.hidden_size)
+            self.fan_layer_q = FANLayer(self.hidden_size, self.hidden_size)
+            self.fan_layer_k = FANLayer(self.hidden_size, self.hidden_size)
 
     def forward(
         self,
@@ -587,12 +588,24 @@ class Qwen3_5GatedDeltaNet(nn.Module):
             conv_state = cache_params.conv_states[self.layer_idx]
             recurrent_state = cache_params.recurrent_states[self.layer_idx]
 
-        qkv_input = hidden_states
-        if hasattr(self, "fan_layer"):
-            # print(f"DEBUG: FANLayer called for layer {self.layer_idx}")
-            qkv_input = self.fan_layer(hidden_states)
-
-        mixed_qkv = self.in_proj_qkv(qkv_input)
+        if hasattr(self, "fan_layer_q"):
+            h_q = self.fan_layer_q(hidden_states)
+            h_k = self.fan_layer_k(hidden_states)
+            h_v = hidden_states
+            
+            # Use functional linear to reuse in_proj_qkv weights
+            W_qkv = self.in_proj_qkv.weight
+            
+            # W_qkv has shape (key_dim*2 + value_dim, hidden_size)
+            # Slicing order: q, k, v
+            q = F.linear(h_q, W_qkv[:self.key_dim])
+            k = F.linear(h_k, W_qkv[self.key_dim:2*self.key_dim])
+            v = F.linear(h_v, W_qkv[2*self.key_dim:])
+            
+            mixed_qkv = torch.cat([q, k, v], dim=-1)
+        else:
+            mixed_qkv = self.in_proj_qkv(hidden_states)
+        
         mixed_qkv = mixed_qkv.transpose(1, 2)
 
         z = self.in_proj_z(hidden_states)
