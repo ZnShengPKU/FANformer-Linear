@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import List
 
-from transformers import AutoTokenizer, Qwen3_5ForCausalLM, Qwen3_5TextConfig
+from transformers import AutoTokenizer
+
+from .configuration_qwen3_5 import Qwen3_5TextConfig
+from .modeling_qwen3_5 import Qwen3_5ForCausalLM
 
 from .config import ModelConfig
 

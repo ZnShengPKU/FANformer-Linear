@@ -589,6 +589,7 @@ class Qwen3_5GatedDeltaNet(nn.Module):
 
         qkv_input = hidden_states
         if hasattr(self, "fan_layer"):
+            # print(f"DEBUG: FANLayer called for layer {self.layer_idx}")
             qkv_input = self.fan_layer(hidden_states)
 
         mixed_qkv = self.in_proj_qkv(qkv_input)
