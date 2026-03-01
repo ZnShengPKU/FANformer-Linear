@@ -12,7 +12,24 @@
     "rms_norm_eps": 1e-6,
     "tie_word_embeddings": true,
     "rope_theta": 10000,
-    "layer_types": "full_attention",
+    "layer_types": [
+      "linear_attention",
+      "linear_attention",
+      "linear_attention",
+      "full_attention",
+      "linear_attention",
+      "linear_attention",
+      "linear_attention",
+      "full_attention",
+      "linear_attention",
+      "linear_attention",
+      "linear_attention",
+      "full_attention",
+      "linear_attention",
+      "linear_attention",
+      "linear_attention",
+      "full_attention"
+    ],
     "attention_bias": false,
     "attention_dropout": 0.0,
     "use_cache": false,
@@ -73,10 +90,16 @@
       0.95
     ],
     "warmup_steps": 2000,
-    "save_dir": "./checkpoints/qwen3_5_200m",
-    "save_interval": 10000,
     "log_interval": 10,
+    "eval_interval": 10000,
+    "eval_num_batches": 20,
+    "gradient_checkpointing": true,
     "device": "cuda",
     "precision": "bf16"
+  },
+  "wandb": {
+    "project": "FANformer-Linear",
+    "entity": null,
+    "log_interval": 10
   }
 }

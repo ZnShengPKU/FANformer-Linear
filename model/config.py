@@ -58,11 +58,19 @@ class TrainingConfig:
     weight_decay: float
     betas: List[float]
     warmup_steps: int
-    save_dir: str
-    save_interval: int
     log_interval: int
+    eval_interval: int
+    eval_num_batches: int
+    gradient_checkpointing: bool = True
     device: str = "cuda"
     precision: str = "bf16"
+
+
+@dataclass
+class WandbConfig:
+    project: str
+    entity: Optional[str] = None
+    log_interval: int = 10
 
 
 @dataclass
@@ -73,6 +81,7 @@ class RunConfig:
     tokenizer: TokenizerConfig
     data: DataConfig
     training: TrainingConfig
+    wandb: Optional[WandbConfig] = None
 
 
 def load_config(path: str | Path) -> RunConfig:
@@ -85,6 +94,8 @@ def load_config(path: str | Path) -> RunConfig:
     eval_data = [DatasetConfig(**item) for item in eval_data_raw] if eval_data_raw else None
     data = DataConfig(train=train_data, eval=eval_data)
     training = TrainingConfig(**raw["training"])
+    wandb_raw = raw.get("wandb")
+    wandb_cfg = WandbConfig(**wandb_raw) if wandb_raw else None
     return RunConfig(
         run_name=raw["run_name"],
         seed=raw["seed"],
@@ -92,4 +103,5 @@ def load_config(path: str | Path) -> RunConfig:
         tokenizer=tokenizer,
         data=data,
         training=training,
+        wandb=wandb_cfg,
     )

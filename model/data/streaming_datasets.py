@@ -68,7 +68,14 @@ class BaseStreamingDataset(torch.utils.data.IterableDataset):
         except Exception as exc:
             raise ValueError("tokenizers is required for text tokenization") from exc
         tokenizer_identifier = self.tokenizer_identifier
-        if Path(tokenizer_identifier).is_file():
+        tokenizer_path = Path(tokenizer_identifier)
+        if tokenizer_path.is_dir():
+            tokenizer_json = tokenizer_path / "tokenizer.json"
+            if tokenizer_json.is_file():
+                tokenizer = BaseTokenizer.from_file(str(tokenizer_json))
+            else:
+                tokenizer = BaseTokenizer.from_pretrained(tokenizer_identifier)
+        elif tokenizer_path.is_file():
             tokenizer = BaseTokenizer.from_file(str(tokenizer_identifier))
         else:
             tokenizer = BaseTokenizer.from_pretrained(tokenizer_identifier)

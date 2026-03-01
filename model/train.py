@@ -85,6 +85,58 @@ def build_scheduler(optimizer: torch.optim.Optimizer, warmup_steps: int, max_ste
     return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
 
+try:
+    import swanlab as wandb_lib
+except Exception:
+    wandb_lib = None
+
+
+def init_wandb(cfg: RunConfig):
+    if cfg.wandb is None or wandb_lib is None:
+        return None
+    return wandb_lib.init(
+        project=cfg.wandb.project,
+        entity=cfg.wandb.entity,
+        name=cfg.run_name,
+        config={
+            "run_name": cfg.run_name,
+            "seed": cfg.seed,
+            "model": cfg.model.__dict__,
+            "training": cfg.training.__dict__,
+        },
+    )
+
+
+def compute_grad_norm(model: torch.nn.Module) -> float:
+    total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), float("inf"))
+    return float(total_norm)
+
+
+def run_eval(
+    model: torch.nn.Module,
+    eval_loaders: list[tuple[str, DataLoader]],
+    device: torch.device,
+    autocast_ctx,
+    max_batches: int,
+):
+    model.eval()
+    results = {}
+    with torch.no_grad():
+        for name, loader in eval_loaders:
+            losses = []
+            for idx, batch in enumerate(loader):
+                if idx >= max_batches:
+                    break
+                batch = {k: v.to(device) for k, v in batch.items()}
+                with autocast_ctx:
+                    outputs = model(**batch)
+                    losses.append(outputs.loss.item())
+            if losses:
+                results[name] = float(sum(losses) / len(losses))
+    model.train()
+    return results
+
+
 def train(cfg: RunConfig) -> None:
     set_seed(cfg.seed)
     tokenizer_path = cfg.tokenizer.path
@@ -101,6 +153,9 @@ def train(cfg: RunConfig) -> None:
     device = torch.device(cfg.training.device if torch.cuda.is_available() else "cpu")
     model.to(device)
     model.train()
+    if cfg.training.gradient_checkpointing:
+        model.gradient_checkpointing_enable()
+        model.config.use_cache = False
 
     dataset = build_dataset(cfg.data.train, tokenizer_path)
     collate_fn = build_collate_fn(cfg.model.pad_token_id)
@@ -110,6 +165,17 @@ def train(cfg: RunConfig) -> None:
         num_workers=0,
         collate_fn=collate_fn,
     )
+    eval_loaders = []
+    if cfg.data.eval:
+        for idx, eval_cfg in enumerate(cfg.data.eval):
+            eval_dataset = build_dataset(eval_cfg, tokenizer_path)
+            eval_loader = DataLoader(
+                eval_dataset,
+                batch_size=cfg.training.micro_batch_size,
+                num_workers=0,
+                collate_fn=collate_fn,
+            )
+            eval_loaders.append((f"eval_{idx}", eval_loader))
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -127,9 +193,10 @@ def train(cfg: RunConfig) -> None:
         torch.autocast(device_type=device.type, dtype=amp_dtype) if use_amp and device.type != "cpu" else nullcontext()
     )
 
-    os.makedirs(cfg.training.save_dir, exist_ok=True)
+    wandb_run = init_wandb(cfg)
 
     step = 0
+    last_grad_norm = 0.0
     optimizer.zero_grad(set_to_none=True)
     for batch in loader:
         step += 1
@@ -140,6 +207,7 @@ def train(cfg: RunConfig) -> None:
         loss.backward()
 
         if step % grad_accum_steps == 0:
+            last_grad_norm = compute_grad_norm(model)
             optimizer.step()
             scheduler.step()
             optimizer.zero_grad(set_to_none=True)
@@ -147,12 +215,35 @@ def train(cfg: RunConfig) -> None:
         if step % cfg.training.log_interval == 0:
             print(f"step={step} loss={loss.item() * grad_accum_steps:.6f}")
 
-        if step % cfg.training.save_interval == 0:
-            save_path = os.path.join(cfg.training.save_dir, f"step-{step}")
-            os.makedirs(save_path, exist_ok=True)
-            torch.save(model.state_dict(), os.path.join(save_path, "model.pt"))
-            torch.save(optimizer.state_dict(), os.path.join(save_path, "optimizer.pt"))
-            torch.save(scheduler.state_dict(), os.path.join(save_path, "scheduler.pt"))
+        if wandb_run is not None and step % cfg.wandb.log_interval == 0:
+            total_loss = loss.item() * grad_accum_steps
+            wandb_lib.log(
+                {
+                    "train/ce_loss": total_loss,
+                    "train/total_loss": total_loss,
+                    "train/grad_norm": last_grad_norm,
+                    "train/lr": scheduler.get_last_lr()[0],
+                    "step": step,
+                },
+                step=step,
+            )
+
+        if eval_loaders and step % cfg.training.eval_interval == 0:
+            eval_results = run_eval(
+                model,
+                eval_loaders,
+                device,
+                autocast_ctx,
+                cfg.training.eval_num_batches,
+            )
+            if eval_results:
+                mean_eval_loss = sum(eval_results.values()) / len(eval_results)
+                if wandb_run is not None:
+                    payload = {"eval/loss": mean_eval_loss, "step": step}
+                    for name, value in eval_results.items():
+                        payload[f"eval/{name}_loss"] = value
+                    wandb_lib.log(payload, step=step)
+                print(f"step={step} eval_loss={mean_eval_loss:.6f}")
 
         if step >= cfg.training.max_steps:
             break
@@ -161,8 +252,37 @@ def train(cfg: RunConfig) -> None:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
+    parser.add_argument("--run_name")
+    parser.add_argument("--device")
+    parser.add_argument("--batch_size", type=int)
+    parser.add_argument("--micro_batch_size", type=int)
+    parser.add_argument("--learning_rate", type=float)
+    parser.add_argument("--max_steps", type=int)
+    parser.add_argument("--wandb_log_interval", type=int)
+    parser.add_argument("--eval_interval", type=int)
+    parser.add_argument("--eval_num_batches", type=int)
     args = parser.parse_args()
     cfg = load_config(args.config)
+    if args.run_name:
+        cfg.run_name = args.run_name
+    if args.device:
+        cfg.training.device = args.device
+    if args.batch_size:
+        cfg.training.global_batch_size = args.batch_size
+    if args.micro_batch_size:
+        cfg.training.micro_batch_size = args.micro_batch_size
+    if args.learning_rate:
+        cfg.training.learning_rate = args.learning_rate
+    if args.max_steps:
+        cfg.training.max_steps = args.max_steps
+    if args.eval_interval:
+        cfg.training.eval_interval = args.eval_interval
+    if args.eval_num_batches:
+        cfg.training.eval_num_batches = args.eval_num_batches
+    if args.wandb_log_interval:
+        if cfg.wandb is None:
+            raise ValueError("wandb config is required when setting wandb_log_interval")
+        cfg.wandb.log_interval = args.wandb_log_interval
     train(cfg)
 
 
