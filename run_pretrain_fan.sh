@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "$0")" && pwd)
 CONFIG_PATH="$ROOT_DIR/model/pretrain_qwen3_5_200m.json"
 RUN_NAME="qwen3_5_200m_pretrain"
-DEVICE="cuda:0"
+DEVICE="cuda:1"
 BATCH_SIZE=16
 MICRO_BATCH_SIZE=1
 LEARNING_RATE=""
@@ -67,6 +67,7 @@ done
 if [[ "$DEVICE" == cuda:* ]]; then
   GPU_INDEX="${DEVICE#cuda:}"
   export CUDA_VISIBLE_DEVICES="$GPU_INDEX"
+  DEVICE="cuda:0"
 elif [[ "$DEVICE" == cpu ]]; then
   export CUDA_VISIBLE_DEVICES=""
 fi
