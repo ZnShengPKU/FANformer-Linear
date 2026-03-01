@@ -1,0 +1,82 @@
+{
+  "run_name": "qwen3_5_200m_pretrain",
+  "seed": 6198,
+  "model": {
+    "vocab_size": 248320,
+    "hidden_size": 512,
+    "intermediate_size": 2048,
+    "num_hidden_layers": 16,
+    "num_attention_heads": 8,
+    "num_key_value_heads": 4,
+    "max_position_embeddings": 2048,
+    "rms_norm_eps": 1e-6,
+    "tie_word_embeddings": true,
+    "rope_theta": 10000,
+    "layer_types": "full_attention",
+    "attention_bias": false,
+    "attention_dropout": 0.0,
+    "use_cache": false,
+    "pad_token_id": null,
+    "bos_token_id": null,
+    "eos_token_id": null
+  },
+  "tokenizer": {
+    "path": "./model"
+  },
+  "data": {
+    "train": {
+      "dataset": "multi_format_streaming",
+      "paths": [
+        "../LLM_from_scratch/dataset/chinese-c4",
+        "../LLM_from_scratch/dataset/fineweb_sample"
+      ],
+      "exclude_paths": [
+        "../LLM_from_scratch/dataset/chinese-c4/chinese-c4-0095-of-0096.jsonl.zst",
+        "../LLM_from_scratch/dataset/fineweb_sample/014_00000.parquet"
+      ],
+      "text_field": "text",
+      "input_ids_field": "input_ids",
+      "max_sequence_length": 2048,
+      "eos_token_id": 248044
+    },
+    "eval": [
+      {
+        "dataset": "jsonl_zst_streaming",
+        "paths": [
+          "../LLM_from_scratch/dataset/chinese-c4/chinese-c4-0095-of-0096.jsonl.zst"
+        ],
+        "text_field": "text",
+        "input_ids_field": "input_ids",
+        "max_sequence_length": 2048,
+        "eos_token_id": 248044
+      },
+      {
+        "dataset": "parquet_streaming",
+        "paths": [
+          "../LLM_from_scratch/dataset/fineweb_sample/014_00000.parquet"
+        ],
+        "text_field": "text",
+        "input_ids_field": "input_ids",
+        "max_sequence_length": 2048,
+        "eos_token_id": 248044
+      }
+    ]
+  },
+  "training": {
+    "max_steps": 250000,
+    "global_batch_size": 2048,
+    "micro_batch_size": 2,
+    "learning_rate": 0.0004,
+    "weight_decay": 0.1,
+    "betas": [
+      0.9,
+      0.95
+    ],
+    "warmup_steps": 2000,
+    "save_dir": "./checkpoints/qwen3_5_200m",
+    "save_interval": 10000,
+    "log_interval": 10,
+    "device": "cuda",
+    "precision": "bf16"
+  }
+}
