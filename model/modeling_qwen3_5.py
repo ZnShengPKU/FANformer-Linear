@@ -561,8 +561,8 @@ class Qwen3_5GatedDeltaNet(nn.Module):
         self.in_proj_a = nn.Linear(self.hidden_size, self.num_v_heads, bias=False)
 
         if getattr(config, "use_fan", False):
-            self.fan_layer_q = FANLayer(self.hidden_size, self.hidden_size)
-            self.fan_layer_k = FANLayer(self.hidden_size, self.hidden_size)
+            self.fan_layer_q = FANLayer(self.hidden_size, self.key_dim)
+            self.fan_layer_k = FANLayer(self.hidden_size, self.key_dim)
 
     def forward(
         self,
