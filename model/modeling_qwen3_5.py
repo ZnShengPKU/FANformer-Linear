@@ -562,7 +562,6 @@ class Qwen3_5GatedDeltaNet(nn.Module):
 
         if getattr(config, "use_fan", False):
             self.fan_layer_q = FANLayer(self.hidden_size, self.key_dim)
-            self.fan_layer_k = FANLayer(self.hidden_size, self.key_dim)
 
     def forward(
         self,
@@ -590,7 +589,6 @@ class Qwen3_5GatedDeltaNet(nn.Module):
 
         if hasattr(self, "fan_layer_q"):
             q = self.fan_layer_q(hidden_states)
-            k = self.fan_layer_k(hidden_states)
             h_v = hidden_states
             
             # Use functional linear to reuse in_proj_qkv weights
@@ -598,6 +596,7 @@ class Qwen3_5GatedDeltaNet(nn.Module):
             
             # W_qkv has shape (key_dim*2 + value_dim, hidden_size)
             # Slicing order: q, k, v
+            k = F.linear(h_v, W_qkv[self.key_dim:2*self.key_dim])
             v = F.linear(h_v, W_qkv[2*self.key_dim:])
             
             mixed_qkv = torch.cat([q, k, v], dim=-1)
