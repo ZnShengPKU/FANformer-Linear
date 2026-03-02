@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "$0")" && pwd)
 CONFIG_PATH="$ROOT_DIR/model/allinear_16l.json"
-RUN_NAME="allinear-fan"
+RUN_NAME="allinear-fan(q:FANLayer)"
 DEVICE="cuda:1"
 BATCH_SIZE=16
 MICRO_BATCH_SIZE=1
@@ -66,7 +66,7 @@ done
 
 if [[ "$DEVICE" == cuda:* ]]; then
   GPU_INDEX="${DEVICE#cuda:}"
-  export CUDA_VISIBLE_DEVICES="$GPU_INDEX"
+  export CUDA_VISIBLE_DEVICES=""
 elif [[ "$DEVICE" == cpu ]]; then
   export CUDA_VISIBLE_DEVICES=""
 fi
