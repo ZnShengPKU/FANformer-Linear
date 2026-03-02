@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "$0")" && pwd)
-CONFIG_PATH="$ROOT_DIR/model/pretrain_qwen3_5_200m.json"
-RUN_NAME="qwen3_5_200m_pretrain"
+CONFIG_PATH="$ROOT_DIR/model/hybrid_16l.json"
+RUN_NAME="hybrid-linearfan"
 DEVICE="cuda:1"
 BATCH_SIZE=16
 MICRO_BATCH_SIZE=1
