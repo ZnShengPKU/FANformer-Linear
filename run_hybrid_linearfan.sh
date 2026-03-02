@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "$0")" && pwd)
 CONFIG_PATH="$ROOT_DIR/model/hybrid_16l.json"
-RUN_NAME="hybrid-linearfan"
+RUN_NAME="hybrid-linearfan(q-FANLayer)"
 DEVICE="cuda:1"
 BATCH_SIZE=16
 MICRO_BATCH_SIZE=1
