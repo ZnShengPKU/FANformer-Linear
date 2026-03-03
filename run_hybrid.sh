@@ -67,6 +67,9 @@ done
 if [[ "$DEVICE" == cuda:* ]]; then
   GPU_INDEX="${DEVICE#cuda:}"
   export CUDA_VISIBLE_DEVICES="$GPU_INDEX"
+  # Since we set CUDA_VISIBLE_DEVICES, PyTorch will see this GPU as "cuda:0"
+  # irrespective of its physical index. So we reset DEVICE to "cuda:0".
+  DEVICE="cuda:0"
 elif [[ "$DEVICE" == cpu ]]; then
   export CUDA_VISIBLE_DEVICES=""
 fi
