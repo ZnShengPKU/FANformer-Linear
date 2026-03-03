@@ -555,13 +555,13 @@ class Qwen3_5GatedDeltaNet(nn.Module):
                 " https://github.com/Dao-AILab/causal-conv1d"
             )
 
-        self.in_proj_qkv = nn.Linear(self.hidden_size, self.key_dim * 2 + self.value_dim, bias=False)
+        self.in_proj_qk = nn.Linear(self.hidden_size, self.key_dim * 2, bias=False)
         self.in_proj_z = nn.Linear(self.hidden_size, self.value_dim, bias=False)
         self.in_proj_b = nn.Linear(self.hidden_size, self.num_v_heads, bias=False)
         self.in_proj_a = nn.Linear(self.hidden_size, self.num_v_heads, bias=False)
 
         if getattr(config, "use_fan", False):
-            self.fan_layer_q = FANLayer(self.hidden_size, self.key_dim)
+            self.fan_layer_v = FANLayer(self.hidden_size, self.value_dim)
 
     def forward(
         self,
@@ -588,18 +588,16 @@ class Qwen3_5GatedDeltaNet(nn.Module):
             recurrent_state = cache_params.recurrent_states[self.layer_idx]
 
         if hasattr(self, "fan_layer_q"):
-            q = self.fan_layer_q(hidden_states)
-            h_v = hidden_states
-            
             # Use functional linear to reuse in_proj_qkv weights
             W_qkv = self.in_proj_qkv.weight
             
             # W_qkv has shape (key_dim*2 + value_dim, hidden_size)
             # Slicing order: q, k, v
-            k = F.linear(h_v, W_qkv[self.key_dim:2*self.key_dim])
-            v = F.linear(h_v, W_qkv[2*self.key_dim:])
+            q = F.linear(hidden_states, W_qkv[:self.key_dim])
+            k = F.linear(hidden_states, W_qkv[self.key_dim:2*self.key_dim])
+            v_fan = self.fan_layer_v(hidden_states)
             
-            mixed_qkv = torch.cat([q, k, v], dim=-1)
+            mixed_qkv = torch.cat([q, k, v_fan], dim=-1)
         else:
             mixed_qkv = self.in_proj_qkv(hidden_states)
         
