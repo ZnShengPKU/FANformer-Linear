@@ -587,19 +587,19 @@ class Qwen3_5GatedDeltaNet(nn.Module):
             conv_state = cache_params.conv_states[self.layer_idx]
             recurrent_state = cache_params.recurrent_states[self.layer_idx]
 
-        if hasattr(self, "fan_layer_q"):
+        if hasattr(self, "fan_layer_v"):
             # Use functional linear to reuse in_proj_qkv weights
-            W_qkv = self.in_proj_qkv.weight
+            W_qk = self.in_proj_qk.weight
             
-            # W_qkv has shape (key_dim*2 + value_dim, hidden_size)
+            # W_qkv has shape (key_dim*2 + value_dim, hidden_size)ß
             # Slicing order: q, k, v
-            q = F.linear(hidden_states, W_qkv[:self.key_dim])
-            k = F.linear(hidden_states, W_qkv[self.key_dim:2*self.key_dim])
+            q = F.linear(hidden_states, W_qk[:self.key_dim])
+            k = F.linear(hidden_states, W_qk[self.key_dim:2*self.key_dim])
             v_fan = self.fan_layer_v(hidden_states)
             
             mixed_qkv = torch.cat([q, k, v_fan], dim=-1)
         else:
-            mixed_qkv = self.in_proj_qkv(hidden_states)
+            mixed_qkv = self.in_proj_qk(hidden_states)
         
         mixed_qkv = mixed_qkv.transpose(1, 2)
 

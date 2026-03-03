@@ -3,8 +3,8 @@ set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "$0")" && pwd)
 CONFIG_PATH="$ROOT_DIR/model/allinear_16l.json"
-RUN_NAME="allinear-fan(q:FANLayer)"
-DEVICE="cuda:1"
+RUN_NAME="allinear-fan(v:FANLayer)"
+DEVICE="cuda:0"
 BATCH_SIZE=16
 MICRO_BATCH_SIZE=1
 LEARNING_RATE=""
